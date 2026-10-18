@@ -1,7 +1,7 @@
 # muse-proxy app image. Runs TypeScript directly (Node 24 type stripping); only the
 # Muse Helper is bundled, so the server can serve it signed at /v1/helper/latest.
 
-FROM node:24.21.0-trixie-slim AS build
+FROM node:26.12.0-trixie-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -10,7 +10,7 @@ COPY scripts ./scripts
 COPY src ./src
 RUN node scripts/build-helper.ts
 
-FROM node:24.21.0-trixie-slim
+FROM node:26.12.0-trixie-slim
 ENV NODE_ENV=production \
     MP_DATA_DIR=/var/lib/muse-proxy \
     MP_HELPER_BUNDLE=/app/dist/muse-helper.mjs \
