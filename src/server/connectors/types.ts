@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import type { Config } from "../config.ts";
 import type { Db } from "../db.ts";
-import type { BrowserPool } from "../browser.ts";
 
 export type ConnectorErrorCode =
   | "invalid_params"
@@ -25,7 +24,6 @@ export class ConnectorError extends Error {
 export interface ConnectorContext {
   /** fetch restricted to the connector's allowedHosts, https only, with timeout and size cap. */
   fetch: (url: string, init?: RequestInit) => Promise<{ status: number; headers: Headers; text: string }>;
-  browser?: BrowserPool;
   config: Config;
   db: Db;
 }
@@ -37,7 +35,7 @@ export interface Connector<P = unknown> {
   /** Max calls per hour across all callers (cache hits don't count). */
   perHour: number;
   cacheTtlSec: number;
-  /** Hosts ctx.fetch and browser navigations may reach. */
+  /** Hosts ctx.fetch may reach. */
   allowedHosts: string[];
   run(params: P, ctx: ConnectorContext): Promise<unknown>;
 }

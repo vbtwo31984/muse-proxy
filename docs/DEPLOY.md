@@ -59,8 +59,7 @@ Check it: `curl https://muse.example.com/healthz`.
   reboot (kernel, libc), the VM reboots at 11:00 UTC and the containers come back on their own (`startup.sh`). A
   Docker upgrade restarts the containers too, around 06:00–07:00 UTC.
 - **Dependencies and image versions:** Dependabot opens PRs weekly for npm packages, the Dockerfile base images and
-  the Caddy image. Once CI passes, merge, then `git pull && mp deploy`. Playwright PRs bump only `playwright-core`;
-  set the same version in both places in `deploy/browser.Dockerfile` (`test/versions.test.ts` fails until you do).
+  the Caddy image. Once CI passes, merge, then `git pull && mp deploy`.
 - **Base image OS patches:** upstream republishes pinned tags like `node:24.21.0-trixie-slim` with Debian fixes.
   `mp update` (or `deploy/deploy.sh --pull`) fetches them again and redeploys. Run it every month or so.
 
@@ -134,9 +133,9 @@ deletes the session on the server. Sign-ins, rejected attempts and admin actions
 | Recent events | `deploy/admin.sh events tail` |
 | Revoke a key | `deploy/admin.sh keys revoke <name or key id>` |
 | Server key | `deploy/admin.sh server-key` |
-| Resize if the browser needs more RAM | `gcloud compute instances stop muse-proxy --zone us-west1-b && gcloud compute instances set-machine-type muse-proxy --zone us-west1-b --machine-type e2-small && gcloud compute instances start muse-proxy --zone us-west1-b` (~$15/mo) |
+| Resize if you need more RAM | `gcloud compute instances stop muse-proxy --zone us-west1-b && gcloud compute instances set-machine-type muse-proxy --zone us-west1-b --machine-type e2-small && gcloud compute instances start muse-proxy --zone us-west1-b` (~$15/mo) |
 
 ## Known gaps / to verify after first deploy
 
-- There's no USPS tracking connector. The API route wasn't workable and usps.com blocks headless Chromium (Akamai, HTTP 403 even from a residential IP), so `usps.track` was removed. The browser pool stays as the base for future scraping connectors on less aggressive sites.
-- The optional US-home egress for the browser (Tailscale exit node, spec 02 §7.5) isn't implemented yet. The GCP IP is already US-based.
+- There's no USPS tracking connector. The API route wasn't workable and usps.com blocks headless Chromium (Akamai, HTTP 403 even from a residential IP), so `usps.track` was removed.
+- There's no headless browser. The Playwright browser container was removed on 2026-10-18 because no connector used it (it's in git history if a future connector needs one).

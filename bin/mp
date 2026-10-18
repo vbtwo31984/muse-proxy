@@ -87,8 +87,8 @@ Web admin (https://$MP_DOMAIN/admin)
 
 Server
   mp status                   Health, Muse connection, containers, memory, disk, cert
-  mp logs [app|caddy|browser] [-f]   Recent logs (default app); -f to follow
-  mp restart [app|caddy|browser]     Restart a container (default app)
+  mp logs [app|caddy] [-f]    Recent logs (default app); -f to follow
+  mp restart [app|caddy]      Restart a container (default app)
   mp deploy                   Ship the committed code and rebuild
   mp update                   Same, but also re-pull base images (OS patches under the same tags)
   mp ssh                      Shell on the VM
@@ -174,7 +174,7 @@ case "$cmd" in
 
   restart)
     svc="${1:-app}"
-    [[ "$svc" =~ ^(app|caddy|browser)$ ]] || die "usage: mp restart [app|caddy|browser]"
+    [[ "$svc" =~ ^(app|caddy)$ ]] || die "usage: mp restart [app|caddy]"
     detached "docker restart muse-proxy-$svc" && echo "restarting muse-proxy-$svc" && wait_healthy ;;
 
   deploy) "$REPO/deploy/deploy.sh" ;;

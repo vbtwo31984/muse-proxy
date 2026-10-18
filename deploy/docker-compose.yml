@@ -1,5 +1,5 @@
 # Runs on the VM from /opt/muse-proxy/src/deploy with --env-file /opt/muse-proxy/.env
-# Memory budget for the 1 GB e2-micro: caddy ~30 MB, app ~150 MB, browser ~60 MB idle / ≤450 MB in use.
+# Memory budget for the 1 GB e2-micro: caddy ~30 MB, app ~150 MB.
 
 name: muse-proxy
 
@@ -36,32 +36,17 @@ services:
     environment:
       MP_HTTP_PORT: "8080"
       MP_SMTP_PORT: "2525"
-      MP_BROWSER_WS: ws://browser:3000/
       MP_TLS_CERT: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MP_DOMAIN}/${MP_DOMAIN}.crt
       MP_TLS_KEY: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MP_DOMAIN}/${MP_DOMAIN}.key
     volumes:
       - /opt/muse-proxy/data/app:/var/lib/muse-proxy
       - /opt/muse-proxy/data/caddy:/caddy-data:ro
-    networks: [edge, browser]
+    networks: [edge]
     mem_limit: 256m
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 
-  browser:
-    build:
-      context: .
-      dockerfile: browser.Dockerfile
-    image: muse-proxy-browser:local
-    container_name: muse-proxy-browser
-    restart: unless-stopped
-    # No published ports, no volumes, no secrets. Reachable only from the app.
-    networks: [browser]
-    mem_limit: 450m
-    shm_size: 256m
-    security_opt: ["no-new-privileges:true"]
-
 networks:
   edge: {}
-  browser: {}

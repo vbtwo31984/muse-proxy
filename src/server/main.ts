@@ -8,7 +8,6 @@ import { EventStore } from "./events.ts";
 import { buildApp } from "./http.ts";
 import { createMailServer, emailAttachment, purgeMail } from "./email.ts";
 import { ConnectorRegistry } from "./connectors/index.ts";
-import { BrowserPool } from "./browser.ts";
 import { loadOrCreateServerIdentity, purgeNonces } from "./store.ts";
 import { purgeAdmin } from "./admin/passkeys.ts";
 
@@ -50,8 +49,7 @@ export async function startServer(config: Config, opts: StartOptions = {}): Prom
   const db = openDb(dbPath(config));
   const identity = loadOrCreateServerIdentity(serverKeyPath(config));
   const events = new EventStore(db, identity);
-  const browser = config.browserWsEndpoint ? new BrowserPool(config.browserWsEndpoint) : undefined;
-  const connectors = new ConnectorRegistry({ db, config, browser, fetchImpl: opts.fetchImpl });
+  const connectors = new ConnectorRegistry({ db, config, fetchImpl: opts.fetchImpl });
   connectors.register(emailAttachment);
 
   const { app, hub } = await buildApp({ config, db, identity, events, connectors, version: packageVersion() });

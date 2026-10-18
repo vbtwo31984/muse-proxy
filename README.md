@@ -4,7 +4,7 @@ A small always-on server that lets **Meta Muse** (outbound-only) receive things 
 
 - **Event stream:** Muse's helper holds a WebSocket open; events queue while it's offline and replay on reconnect.
 - **Email:** receive-only SMTP for random, revocable addresses `@muse.example.com`. Every message becomes an event.
-- **Connectors:** named, allowlisted fetchers (`email.attachment` so far), with an on-demand headless browser when there's no API.
+- **Connectors:** named, allowlisted fetchers (`email.attachment` so far).
 - **Publish API:** your own scripts can push events to Muse.
 
 Both sides authenticate with Ed25519 keys (mutual challenge-response, signed requests, signed events, signed helper

@@ -1,9 +1,4 @@
 # Weekly update PRs. After merging one: git pull && bin/mp deploy.
-#
-# Playwright is pinned in three places that must match: playwright-core in package.json,
-# and the image tag and npm version in deploy/browser.Dockerfile. Dependabot only bumps
-# playwright-core; test/versions.test.ts then fails until browser.Dockerfile is bumped
-# to the same version in that PR.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -16,8 +11,6 @@ updates:
   - package-ecosystem: docker
     directories: [/, /deploy]
     schedule: { interval: weekly }
-    ignore:
-      - dependency-name: playwright
 
   - package-ecosystem: docker-compose
     directory: /deploy

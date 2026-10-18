@@ -1,6 +1,5 @@
 import { canonicalize } from "../../protocol/canonical.ts";
 import { sha256hex } from "../../protocol/crypto.ts";
-import type { BrowserPool } from "../browser.ts";
 import type { Config } from "../config.ts";
 import type { Db } from "../db.ts";
 import { RateLimiter } from "../ratelimit.ts";
@@ -14,13 +13,11 @@ export class ConnectorRegistry {
   private readonly limiters = new Map<string, RateLimiter>();
   private readonly db: Db;
   private readonly config: Config;
-  private readonly browser?: BrowserPool;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(opts: { db: Db; config: Config; browser?: BrowserPool; fetchImpl?: typeof fetch }) {
+  constructor(opts: { db: Db; config: Config; fetchImpl?: typeof fetch }) {
     this.db = opts.db;
     this.config = opts.config;
-    this.browser = opts.browser;
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
@@ -57,7 +54,6 @@ export class ConnectorRegistry {
     try {
       const result = await connector.run(parsed.data, {
         fetch: allowlistedFetch(connector.allowedHosts, this.fetchImpl),
-        browser: this.browser,
         config: this.config,
         db: this.db,
       });

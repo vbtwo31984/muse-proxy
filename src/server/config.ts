@@ -22,7 +22,6 @@ export interface Config {
   alertUrl?: string;
   disconnectAlertMinutes: number;
   helperBundlePath: string;
-  browserWsEndpoint?: string;
   admin: {
     /** Web admin at /admin (passkey sign-in). Off unless MP_ADMIN_ENABLED=true. */
     enabled: boolean;
@@ -76,7 +75,6 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     alertUrl: opt("MP_ALERT_URL"),
     disconnectAlertMinutes: int("MP_DISCONNECT_ALERT_MINUTES", 30),
     helperBundlePath: opt("MP_HELPER_BUNDLE") ?? join(process.cwd(), "dist", "muse-helper.mjs"),
-    browserWsEndpoint: opt("MP_BROWSER_WS"),
     admin: {
       enabled: opt("MP_ADMIN_ENABLED") === "true",
       email: opt("MP_ADMIN_EMAIL") ?? `admin@${domain}`,

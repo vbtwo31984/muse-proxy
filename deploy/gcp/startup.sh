@@ -3,7 +3,7 @@
 set -euo pipefail
 exec > >(logger -t muse-proxy-startup) 2>&1
 
-# 2 GB swap: the browser container can spike past the e2-micro's 1 GB RAM.
+# 2 GB swap: a safety net for the e2-micro's 1 GB RAM (builds, mail spikes).
 if ! swapon --show | grep -q /swapfile; then
   [[ -f /swapfile ]] || { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile; }
   swapon /swapfile

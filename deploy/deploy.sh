@@ -3,7 +3,7 @@
 #   GCP_PROJECT=my-project deploy/deploy.sh [--pull]
 #
 # --pull also fetches the base images again, picking up OS patches that upstream
-# republishes under the same pinned tags (node, caddy, playwright).
+# republishes under the same pinned tags (node, caddy).
 #
 # The build runs on the VM as a detached systemd unit, so a dropped SSH/IAP
 # session can't kill it, and images are built one at a time because the
@@ -37,7 +37,6 @@ ssh_vm "set -e
     set -e
     C=\"docker compose --env-file /opt/muse-proxy/.env\"
     \$C build $PULL app
-    \$C build $PULL browser
     ${PULL:+\$C pull caddy}
     \$C up -d --remove-orphans
     docker image prune -f >/dev/null

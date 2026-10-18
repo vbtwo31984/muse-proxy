@@ -344,7 +344,8 @@ Rough effort: phases 1–4 are the bulk of the work. Each is a focused session o
 ## 12. Implementation notes (2026-10-10)
 
 - **`usps.track` was removed (2026-10-17).** The API route wasn't going to work, and neither does the browser fallback (below). The USPS sections above are kept as the original design only.
-- **USPS browser fallback doesn't work.** Live test: tools.usps.com (Akamai) returned **HTTP 403 "Access Denied"** to headless Chromium, even from a US residential IP and with a standard Chrome user agent. Getting past that would mean bot-detection evasion, which is out of scope. The **USPS Tracking API is required** for `usps.track`. The browser pool stays as the base for scraping connectors on sites without aggressive bot protection.
+- **USPS browser fallback doesn't work.** Live test: tools.usps.com (Akamai) returned **HTTP 403 "Access Denied"** to headless Chromium, even from a US residential IP and with a standard Chrome user agent. Getting past that would mean bot-detection evasion, which is out of scope. The **USPS Tracking API is required** for `usps.track`. The browser pool stayed as the base for scraping connectors on sites without aggressive bot protection.
+- **Browser container removed (2026-10-18).** No connector used it, and it cost a 450 MB memory cap, a ~2 GB image, and a version pin to keep in step with `playwright-core`. §7.5 and the browser rows above are kept as the original design only.
 - `usps.track` targets Tracking 3.2 (`/tracking/v3r2/`, configurable). Both the OAuth and tracking endpoints were confirmed live (401 without credentials).
 - The **`us-home` Tailscale egress (§7.5) is not implemented yet.** Given the USPS result it's lower priority. Add it when a specific site needs a residential IP.
 - Persistence uses Node's built-in `node:sqlite`, so there are no native modules to compile in the container.
