@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# mp: one command for muse-proxy admin. Run `mp help`.
+#
+# Settings come from environment variables, then from .mp.env at the repo root
+# (gitignored; see .mp.env.example), e.g. GCP_PROJECT=other mp status.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+if [[ -f "$REPO/.mp.env" ]]; then
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^[A-Z_]+$ && -z "${!k:-}" ]] && export "$k=$v"
+  done < "$REPO/.mp.env"
+fi
+export GCP_PROJECT="${GCP_PROJECT:?set GCP_PROJECT (in .mp.env or the environment)}"
+export GCP_ZONE="${GCP_ZONE:-us-west1-b}"
+export VM_NAME="${VM_NAME:-muse-proxy}"
+MP_DOMAIN="${MP_DOMAIN:?set MP_DOMAIN (in .mp.env or the environment)}"
+APP=muse-proxy-app
+COMPOSE="cd /opt/muse-proxy/src/deploy && sudo docker compose --env-file /opt/muse-proxy/.env"
+
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+die() { echo "mp: $*" >&2; exit 1; }
+
+# gcloud's IAP tunnel prints NumPy/bandwidth hints on every call; hide them.
+quiet() { grep -v -e NumPy -e increasing_the_tcp -e '^WARNING:\s*$' -e 'Pseudo-terminal will not be allocated' -e ExperimentalWarning -e trace-warnings >&2 || true; }
+
+# Run a command on the VM. Keepalives stop IAP from dropping quiet sessions, and stdin
+# comes from /dev/null unless the command needs it (vm_stdin), because an idle or closed
+# stdin makes the IAP tunnel drop the session ("Failed to send all data from [stdin]").
+vm() { vm_stdin "$1" </dev/null; }
+vm_stdin() {
+  gcloud compute ssh "$VM_NAME" --project "$GCP_PROJECT" --zone "$GCP_ZONE" --tunnel-through-iap --quiet \
+    --ssh-flag=-oServerAliveInterval=15 --ssh-flag=-oServerAliveCountMax=8 \
+    --command "$1" 2> >(quiet)
+}
+
+# Interactive session (TTY) on the VM, optionally running a command.
+vm_tty() {
+  gcloud compute ssh "$VM_NAME" --project "$GCP_PROJECT" --zone "$GCP_ZONE" --tunnel-through-iap --quiet \
+    --ssh-flag=-oServerAliveInterval=15 --ssh-flag=-t ${1:+--command "$1"} 2> >(quiet)
+}
+
+# The server's admin CLI (see src/server/cli.ts), with arguments shell-quoted for the remote side.
+admin() { vm "sudo docker exec $APP muse-proxy $(printf '%q ' "$@")"; }
+
+# Container restarts change Docker's network rules, which tends to cut the IAP SSH session.
+# So start them as a detached job on the VM, return right away, and watch the public
+# health endpoint from here instead.
+detached() { vm "sudo systemd-run --unit mp-\$(date +%s) --collect --quiet /bin/sh -c '$1'"; }
+wait_healthy() {
+  printf 'waiting for the app'
+  sleep 5
+  for _ in $(seq 1 30); do
+    if out="$(curl -fsS -m 5 "https://$MP_DOMAIN/healthz" 2>/dev/null)"; then echo; echo "up: $out"; return 0; fi
+    printf '.'; sleep 3
+  done
+  echo; die "app not healthy after 95s; check: mp logs app"
+}
+# Recreate the app container so it rereads /opt/muse-proxy/.env.
+reload_app() { detached "$COMPOSE up -d --no-build --force-recreate app" && wait_healthy; }
+
+usage() {
+  cat <<EOF
+mp: muse-proxy admin ($MP_DOMAIN, VM $VM_NAME in $GCP_PROJECT/$GCP_ZONE)
+
+Email addresses
+  mp alias add <label>        Create a random address, e.g. mp alias add packages
+  mp alias list               List addresses (and revoked ones)
+  mp alias revoke <address>   Stop accepting mail for an address
+
+Events (what Muse receives)
+  mp events [N]               Last N events (default 20) and Muse's ack position
+  mp events show <seq>        Metadata of one event (from, subject, auth checks)
+  mp events body <seq>        Full text of one event's email
+  mp events clear             Delete all queued events and stored emails (asks first)
+
+Muse & keys
+  mp pair [name]              One-time pairing code for Muse (valid 15 min)
+  mp keys                     Registered keys (Muse, publishers)
+  mp keys revoke <name|id>    Revoke a key
+  mp server-key               Server public key + fingerprint
+
+Web admin (https://$MP_DOMAIN/admin)
+  mp admin-enroll [minutes]   Single-use link that adds a passkey (open it on the device)
+  mp passkeys                 List web admin passkeys
+  mp passkeys revoke <id|name>  Remove a passkey and end its sessions
+
+Server
+  mp status                   Health, Muse connection, containers, memory, disk, cert
+  mp logs [app|caddy|browser] [-f]   Recent logs (default app); -f to follow
+  mp restart [app|caddy|browser]     Restart a container (default app)
+  mp deploy                   Ship the committed code and rebuild
+  mp ssh                      Shell on the VM
+
+Settings (/opt/muse-proxy/.env)
+  mp env                      Show settings (secrets masked)
+  mp env set KEY [VALUE]      Set a setting; omit VALUE to be prompted (hidden, never echoed or logged)
+  mp env edit                 Edit the file in nano on the VM
+  mp alert                    Show the ntfy topic for disconnect alerts and send a test
+
+Checks
+  mp dns                      DNS + DNSSEC check for $MP_DOMAIN
+  mp mail-test                Talk SMTP to the server from the VM (your ISP blocks port 25)
+EOF
+}
+
+event_query() { # $1 = JS expression run with `db`, `ev` (row for seq $2) available
+  vm "sudo docker exec $APP node -e '
+const { DatabaseSync } = require(\"node:sqlite\");
+const db = new DatabaseSync(\"/var/lib/muse-proxy/muse-proxy.sqlite\", { readOnly: true });
+const ev = db.prepare(\"SELECT * FROM events WHERE seq = ?\").get(Number(process.argv[1]));
+if (!ev) { console.error(\"no event with seq \" + process.argv[1] + \" (maybe purged or cleared)\"); process.exit(1); }
+const p = JSON.parse(ev.payload);
+$1' $2 2>&1"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  help|-h|--help) usage ;;
+
+  alias|aliases)
+    sub="${1:-list}"; shift || true
+    case "$sub" in
+      add) [[ $# -ge 1 ]] || die "usage: mp alias add <label>"; admin alias add --label "$1" ;;
+      list|ls) admin alias list ;;
+      revoke|rm) [[ $# -ge 1 ]] || die "usage: mp alias revoke <address>"; admin alias revoke "$1" ;;
+      *) die "unknown: mp alias $sub (add|list|revoke)" ;;
+    esac ;;
+
+  events|ev)
+    sub="${1:-}"
+    case "$sub" in
+      ""|[0-9]*) admin events tail --limit "${sub:-20}" ;;
+      show) [[ $# -ge 2 ]] || die "usage: mp events show <seq>"
+        event_query 'const { text, ...meta } = p; console.log(JSON.stringify({ seq: ev.seq, kind: ev.kind, created_at: ev.created_at, source: ev.source, trust: ev.trust, payload: { ...meta, text_chars: (text || "").length } }, null, 2));' "$2" ;;
+      body) [[ $# -ge 2 ]] || die "usage: mp events body <seq>"
+        event_query 'console.log("From: " + (p.from || []).join(", ") + "\nSubject: " + p.subject + "\n\n" + (p.text ?? JSON.stringify(p, null, 2)));' "$2" ;;
+      clear)
+        admin events clear | sed 's/; re-run with --yes//'
+        read -r -p "Delete them? [y/N] " ok
+        [[ "$ok" == [yY]* ]] && admin events clear --yes || echo "cancelled" ;;
+      *) die "unknown: mp events $sub (N|show|body|clear)" ;;
+    esac ;;
+
+  pair) admin pair --name "${1:-muse-main}" ;;
+  keys)
+    case "${1:-list}" in
+      list) admin keys list ;;
+      revoke) [[ $# -ge 2 ]] || die "usage: mp keys revoke <name|id>"; admin keys revoke "$2" ;;
+      *) die "unknown: mp keys ${1} (list|revoke)" ;;
+    esac ;;
+  server-key) admin server-key ;;
+  admin-enroll) admin admin-enroll ${1:+--minutes "$1"} ;;
+  passkeys)
+    case "${1:-list}" in
+      list) admin admin-passkeys list ;;
+      revoke|rm) [[ $# -ge 2 ]] || die "usage: mp passkeys revoke <id|name>"; admin admin-passkeys revoke "$2" ;;
+      *) die "unknown: mp passkeys ${1} (list|revoke)" ;;
+    esac ;;
+
+  status)
+    bold "Public endpoint"
+    curl -sS -m 10 "https://$MP_DOMAIN/healthz" && echo || echo "  (unreachable)"
+    echo | openssl s_client -connect "$MP_DOMAIN:443" -servername "$MP_DOMAIN" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=/  cert expires: /' || true
+    bold "VM"
+    vm 'uptime | sed "s/^ */  /"; free -m | awk "NR==2{printf \"  memory: %s/%s MB used\", \$3, \$2} NR==3{printf \", swap %s/%s MB\n\", \$3, \$2}"; df -h / | awk "NR==2{print \"  disk: \" \$3 \" used of \" \$2}"; echo; sudo docker ps --format "  {{.Names}}\t{{.Status}}"; echo; sudo docker stats --no-stream --format "  {{.Name}}\t{{.MemUsage}}"' ;;
+
+  logs)
+    svc="${1:-app}"; follow="${2:-}"
+    [[ "$svc" == "-f" ]] && { svc=app; follow=-f; }
+    if [[ "$follow" == "-f" ]]; then vm_tty "sudo docker logs -f --tail 50 muse-proxy-$svc"
+    else vm "sudo docker logs --tail 100 muse-proxy-$svc 2>&1"; fi ;;
+
+  restart)
+    svc="${1:-app}"
+    [[ "$svc" =~ ^(app|caddy|browser)$ ]] || die "usage: mp restart [app|caddy|browser]"
+    detached "docker restart muse-proxy-$svc" && echo "restarting muse-proxy-$svc" && wait_healthy ;;
+
+  deploy) "$REPO/deploy/deploy.sh" ;;
+  ssh) vm_tty ;;
+
+  env)
+    sub="${1:-show}"
+    case "$sub" in
+      show)
+        vm "sudo sed -E 's/^([A-Z_]*(SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*=).+/\1********/; s#^(MP_ALERT_URL=https://ntfy.sh/).+#\1********#' /opt/muse-proxy/.env" ;;
+      set)
+        [[ $# -ge 2 ]] || die "usage: mp env set KEY [VALUE]"
+        key="$2"
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || die "KEY must look like MP_SOMETHING"
+        if [[ $# -ge 3 ]]; then value="$3"; else read -r -s -p "$key: " value; echo; fi
+        [[ "$value" != *$'\n'* ]] || die "value can't contain newlines"
+        # The value travels over stdin, never on a command line (where `ps` could see it).
+        printf '%s' "$value" | vm_stdin "sudo python3 -c '
+import re, sys
+key, path = sys.argv[1], \"/opt/muse-proxy/.env\"
+val = sys.stdin.read()
+lines = open(path).read().splitlines()
+out, found = [], False
+for line in lines:
+    if re.match(re.escape(key) + r\"=\", line):
+        out.append(key + \"=\" + val); found = True
+    else:
+        out.append(line)
+if not found: out.append(key + \"=\" + val)
+open(path, \"w\").write(\"\\n\".join(out) + \"\\n\")
+print(\"set \" + key)' $key"
+        reload_app ;;
+      edit) vm_tty "sudo nano /opt/muse-proxy/.env"; reload_app ;;
+      *) die "unknown: mp env $sub (show|set|edit)" ;;
+    esac ;;
+
+  alert)
+    url="$(vm "sudo sed -n 's/^MP_ALERT_URL=//p' /opt/muse-proxy/.env")"
+    [[ -n "$url" ]] || die "no MP_ALERT_URL set (mp env set MP_ALERT_URL https://ntfy.sh/<random-topic>)"
+    echo "alerts go to: $url"
+    case "$url" in https://ntfy.sh/*) echo "subscribe in the ntfy app to topic: ${url#https://ntfy.sh/}" ;; esac
+    vm "curl -sS -m 15 -o /dev/null -w 'test notification sent (HTTP %{http_code})\n' -H 'Title: muse-proxy test' -d 'Test from mp alert' '$url'" ;;
+
+  dns)
+    for t in A MX TXT; do printf '  %-4s %s\n' "$t" "$(dig +short "$t" "$MP_DOMAIN" @8.8.8.8 | tr '\n' ' ')"; done
+    printf '  %-4s %s\n' DMARC "$(dig +short TXT "_dmarc.$MP_DOMAIN" @8.8.8.8)"
+    for r in 8.8.8.8 1.1.1.1 9.9.9.9; do
+      out="$(dig +time=3 A "$MP_DOMAIN" @"$r")"
+      st="$(grep -o 'status: [A-Z]*' <<<"$out" | cut -d' ' -f2)"
+      grep -q 'flags:.* ad' <<<"$out" && ad="DNSSEC validated" || ad="NOT validated"
+      printf '  %-8s %s, %s\n' "$r" "$st" "$ad"
+    done ;;
+
+  mail-test)
+    vm 'python3 -c "
+import smtplib, ssl
+s = smtplib.SMTP(\"127.0.0.1\", 25, timeout=15)
+print(\"banner:\", s.ehlo_resp and s.ehlo_resp.decode() or s.ehlo()[1].decode().splitlines()[0])
+s.starttls(context=ssl._create_unverified_context())
+cert = s.sock.getpeercert(binary_form=True)
+print(\"STARTTLS: ok\")
+s.ehlo(); s.mail(\"check@mp.example\"); code, msg = s.rcpt(\"nobody@muse.example.com\")
+print(\"unknown recipient rejected:\", code, msg.decode())
+s.quit()
+"; echo | timeout 10 openssl s_client -connect 127.0.0.1:25 -starttls smtp 2>/dev/null | openssl x509 -noout -subject -enddate 2>/dev/null | sed "s/^/cert /"' ;;
+
+  *) usage; echo; die "unknown command: $cmd" ;;
+esac

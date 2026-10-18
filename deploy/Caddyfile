@@ -1,0 +1,10 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$MP_DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000"
+	header -Server
+	# WebSocket upgrades pass through reverse_proxy automatically.
+	reverse_proxy app:8080
+}

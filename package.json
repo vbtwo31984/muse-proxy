@@ -1,0 +1,47 @@
+{
+  "name": "muse-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Outbound-only bridge between Meta Muse and the outside world: WebSocket event stream, inbound email, and fetch connectors.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server/main.ts",
+    "cli": "node src/server/cli.ts",
+    "helper": "node src/helper/cli.ts",
+    "publish-tool": "node src/publisher/cli.ts",
+    "build:helper": "node scripts/build-helper.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run -s build:helper && node --test --test-concurrency=1 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@fastify/websocket": "11.3.4",
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.3",
+    "fastify": "5.12.5",
+    "html-to-text": "10.0.1",
+    "mailauth": "7.3.0",
+    "mailparser": "3.9.38",
+    "playwright-core": "1.64.0",
+    "smtp-server": "3.19.21",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/html-to-text": "9.0.4",
+    "@types/mailparser": "3.9.0",
+    "@types/node": "24.19.2",
+    "@types/nodemailer": "8.0.2",
+    "@types/smtp-server": "3.5.13",
+    "@types/ws": "8.18.2",
+    "esbuild": "0.28.2",
+    "nodemailer": "10.1.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@peculiar/asn1-schema": "2.11.0",
+    "@peculiar/asn1-x509": "2.11.0",
+    "@peculiar/asn1-x509-logotype": "2.11.0"
+  }
+}

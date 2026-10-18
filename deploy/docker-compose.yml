@@ -1,0 +1,67 @@
+# Runs on the VM from /opt/muse-proxy/src/deploy with --env-file /opt/muse-proxy/.env
+# Memory budget for the 1 GB e2-micro: caddy ~30 MB, app ~150 MB, browser ~60 MB idle / ≤450 MB in use.
+
+name: muse-proxy
+
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    container_name: muse-proxy-caddy
+    restart: unless-stopped
+    # Same uid as the app's "node" user, so the app can read the cert for SMTP STARTTLS.
+    user: "1000:1000"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MP_DOMAIN: ${MP_DOMAIN:?set MP_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/muse-proxy/data/caddy:/data
+      - /opt/muse-proxy/data/caddy-config:/config
+    networks: [edge]
+    mem_limit: 96m
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: muse-proxy-app:local
+    container_name: muse-proxy-app
+    restart: unless-stopped
+    ports:
+      - "25:2525"
+    env_file: /opt/muse-proxy/.env
+    environment:
+      MP_HTTP_PORT: "8080"
+      MP_SMTP_PORT: "2525"
+      MP_BROWSER_WS: ws://browser:3000/
+      MP_TLS_CERT: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MP_DOMAIN}/${MP_DOMAIN}.crt
+      MP_TLS_KEY: /caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/${MP_DOMAIN}/${MP_DOMAIN}.key
+    volumes:
+      - /opt/muse-proxy/data/app:/var/lib/muse-proxy
+      - /opt/muse-proxy/data/caddy:/caddy-data:ro
+    networks: [edge, browser]
+    mem_limit: 256m
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  browser:
+    build:
+      context: .
+      dockerfile: browser.Dockerfile
+    image: muse-proxy-browser:local
+    container_name: muse-proxy-browser
+    restart: unless-stopped
+    # No published ports, no volumes, no secrets. Reachable only from the app.
+    networks: [browser]
+    mem_limit: 450m
+    shm_size: 256m
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  edge: {}
+  browser: {}
