@@ -27,6 +27,16 @@ if ! command -v docker >/dev/null; then
   dpkg-reconfigure -f noninteractive unattended-upgrades
 fi
 
+# unattended-upgrades: also take Docker's packages (its own apt repo), and reboot when an
+# update needs it (kernel, libc) at 11:00 UTC (3-4 AM Pacific), after the daily ~06:00 UTC run.
+# Containers come back on their own (restart: unless-stopped).
+cat > /etc/apt/apt.conf.d/52muse-proxy-upgrades <<'EOF'
+Unattended-Upgrade::Origins-Pattern { "origin=Docker,label=Docker CE"; };
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "11:00";
+EOF
+
 # Debian's image ships exim4 on 127.0.0.1:25, which blocks publishing port 25. We don't need a local MTA.
 if systemctl list-unit-files exim4.service >/dev/null 2>&1; then
   systemctl disable --now exim4 >/dev/null 2>&1 || true

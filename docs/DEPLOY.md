@@ -53,6 +53,17 @@ GCP_PROJECT=<project> deploy/deploy.sh
 This ships the committed `HEAD` over IAP, then runs `docker compose up -d --build` on the VM. The first build takes a few minutes on the e2-micro.
 Check it: `curl https://muse.example.com/healthz`.
 
+### Keeping it up to date
+
+- **VM OS:** unattended-upgrades installs Debian security updates and Docker's packages daily. When an update needs a
+  reboot (kernel, libc), the VM reboots at 11:00 UTC and the containers come back on their own (`startup.sh`). A
+  Docker upgrade restarts the containers too, around 06:00–07:00 UTC.
+- **Dependencies and image versions:** Dependabot opens PRs weekly for npm packages, the Dockerfile base images and
+  the Caddy image. Once CI passes, merge, then `git pull && mp deploy`. Playwright PRs bump only `playwright-core`;
+  set the same version in both places in `deploy/browser.Dockerfile` (`test/versions.test.ts` fails until you do).
+- **Base image OS patches:** upstream republishes pinned tags like `node:24.21.0-trixie-slim` with Debian fixes.
+  `mp update` (or `deploy/deploy.sh --pull`) fetches them again and redeploys. Run it every month or so.
+
 ## 5. Pair Muse
 
 ```bash

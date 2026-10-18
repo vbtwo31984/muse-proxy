@@ -90,6 +90,7 @@ Server
   mp logs [app|caddy|browser] [-f]   Recent logs (default app); -f to follow
   mp restart [app|caddy|browser]     Restart a container (default app)
   mp deploy                   Ship the committed code and rebuild
+  mp update                   Same, but also re-pull base images (OS patches under the same tags)
   mp ssh                      Shell on the VM
 
 Settings (/opt/muse-proxy/.env)
@@ -177,6 +178,7 @@ case "$cmd" in
     detached "docker restart muse-proxy-$svc" && echo "restarting muse-proxy-$svc" && wait_healthy ;;
 
   deploy) "$REPO/deploy/deploy.sh" ;;
+  update) "$REPO/deploy/deploy.sh" --pull ;;
   ssh) vm_tty ;;
 
   env)

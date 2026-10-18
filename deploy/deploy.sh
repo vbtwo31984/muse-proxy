@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Ship the committed tree (HEAD) to the VM over IAP and (re)build + restart.
-#   GCP_PROJECT=my-project deploy/deploy.sh
+#   GCP_PROJECT=my-project deploy/deploy.sh [--pull]
+#
+# --pull also fetches the base images again, picking up OS patches that upstream
+# republishes under the same pinned tags (node, caddy, playwright).
 #
 # The build runs on the VM as a detached systemd unit, so a dropped SSH/IAP
 # session can't kill it, and images are built one at a time because the
@@ -13,6 +16,8 @@ NAME="${VM_NAME:-muse-proxy}"
 ROOT="$(git rev-parse --show-toplevel)"
 REV="$(git -C "$ROOT" rev-parse --short HEAD)"
 UNIT="muse-proxy-deploy-$REV-$(date +%s)"
+PULL=""
+case "${1:-}" in --pull) PULL="--pull" ;; "") ;; *) echo "usage: deploy.sh [--pull]" >&2; exit 2 ;; esac
 TARBALL="$(mktemp -t muse-proxy-XXXXXX).tar.gz"
 trap 'rm -f "$TARBALL"' EXIT
 
@@ -31,8 +36,9 @@ ssh_vm "set -e
   sudo systemd-run --unit '$UNIT' --collect --working-directory /opt/muse-proxy/src/deploy /bin/sh -c '
     set -e
     C=\"docker compose --env-file /opt/muse-proxy/.env\"
-    \$C build app
-    \$C build browser
+    \$C build $PULL app
+    \$C build $PULL browser
+    ${PULL:+\$C pull caddy}
     \$C up -d --remove-orphans
     docker image prune -f >/dev/null
     \$C ps
