@@ -17,7 +17,7 @@ updates:
     directories: [/, /deploy]
     schedule: { interval: weekly }
     ignore:
-      - dependency-name: mcr.microsoft.com/playwright
+      - dependency-name: playwright
 
   - package-ecosystem: docker-compose
     directory: /deploy
