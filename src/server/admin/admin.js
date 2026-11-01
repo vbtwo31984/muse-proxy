@@ -65,3 +65,40 @@ if (enrollForm) {
     });
   });
 }
+
+// Invitations: copy the public link, guess the time zone for new events, check and preview the picture.
+for (const button of document.querySelectorAll("button[data-copy]")) {
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(button.dataset.copy);
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1500);
+    } catch {
+      button.previousElementSibling?.select();
+    }
+  });
+}
+for (const input of document.querySelectorAll("input[data-select-on-focus]")) {
+  input.addEventListener("focus", () => input.select());
+}
+const inviteForm = document.querySelector("form[data-invite-form]");
+if (inviteForm) {
+  const tz = inviteForm.elements.timezone;
+  if (inviteForm.hasAttribute("data-guess-timezone") && tz) {
+    const guess = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if ([...tz.options].some((o) => o.value === guess)) tz.value = guess;
+  }
+  const file = inviteForm.elements.image;
+  file?.addEventListener("change", () => {
+    inviteForm.querySelector(".image-preview")?.remove();
+    const f = file.files[0];
+    file.setCustomValidity(f && f.size > Number(file.dataset.maxBytes) ? "That picture is too big (max 15 MB)." : "");
+    file.reportValidity();
+    if (!f || !f.type.startsWith("image/")) return;
+    const img = document.createElement("img");
+    img.className = "image-preview";
+    img.alt = "Selected picture";
+    img.src = URL.createObjectURL(f);
+    file.closest("label").after(img);
+  });
+}

@@ -101,6 +101,34 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
   created_at  TEXT NOT NULL,
   expires_at  INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS invites (
+  id           TEXT PRIMARY KEY,         -- random, unguessable; the public link is /events/<id>
+  title        TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  location     TEXT NOT NULL,
+  starts_local TEXT NOT NULL,            -- wall-clock 'YYYY-MM-DDTHH:MM' in timezone
+  ends_local   TEXT,
+  timezone     TEXT NOT NULL,            -- IANA name
+  image        TEXT,                     -- file name under <dataDir>/invites
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  closed_at    TEXT                      -- RSVPs no longer accepted
+);
+
+CREATE TABLE IF NOT EXISTS rsvps (
+  id           TEXT PRIMARY KEY,         -- random; the thank-you page is /events/<invite>/thanks/<id>
+  invite_id    TEXT NOT NULL REFERENCES invites(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  contact      TEXT NOT NULL,
+  contact_key  TEXT NOT NULL,            -- normalized contact; answering again updates the same RSVP
+  attending    INTEGER NOT NULL,
+  adults       INTEGER NOT NULL,
+  kids         INTEGER NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  UNIQUE (invite_id, contact_key)
+);
 `;
 
 export type Db = DatabaseSync;

@@ -113,3 +113,41 @@ button:disabled { opacity: 0.6; cursor: default; }
 dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
 dl.meta dt { color: var(--muted); }
 dl.meta dd { margin: 0; word-break: break-word; }
+
+/* Invitations */
+a.button {
+  display: inline-block;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+}
+a.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); vertical-align: middle; }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+form.stack { display: grid; gap: 14px; max-width: 720px; }
+form.stack label { display: grid; gap: 4px; font-weight: 600; font-size: 14px; }
+form.stack label .muted { font-weight: 400; }
+form.stack label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+form.stack input[type="text"], form.stack input[type="date"], form.stack input[type="time"], form.stack select, form.stack textarea {
+  font: inherit;
+  font-weight: 400;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+form.stack textarea { resize: vertical; }
+form.stack .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+form.stack .actions { display: flex; gap: 16px; align-items: center; margin: 4px 0 0; }
+.field-error { margin: 0; font-weight: 400; font-size: 13px; }
+.current-image, .image-preview { margin-top: 8px; }
+.current-image img, img.image-preview { display: block; max-width: 240px; max-height: 240px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 6px; }
+.invite-head { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 16px; }
+.invite-head .thumb { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.invite-head dl { flex: 1; min-width: 260px; }
+input.link { width: min(100%, 420px); }

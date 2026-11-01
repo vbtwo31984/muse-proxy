@@ -1,6 +1,8 @@
 import type { AliasRecord, KeyRecord } from "../store.ts";
 import type { Passkey } from "./passkeys.ts";
 import { html, type SafeHtml } from "./html.ts";
+import { invitesSection } from "./invites.ts";
+import type { InviteSummary } from "../invites/store.ts";
 
 export interface Flash {
   kind: "ok" | "err";
@@ -44,6 +46,7 @@ export interface DashboardData {
   events: EventSummary[];
   eventCount: number;
   passkeys: Passkey[];
+  invites: (InviteSummary & { past: boolean })[];
 }
 
 export interface EventDetail {
@@ -287,7 +290,7 @@ function passkeysSection(d: DashboardData, s: SessionView): SafeHtml {
 export function dashboardPage(d: DashboardData, s: SessionView, flash?: Flash): string {
   return layout(
     "muse-proxy admin",
-    html`${flashBox(flash)}${statusSection(d)}${aliasesSection(d, s)}${eventsSection(d, s)}${keysSection(d, s)}${passkeysSection(d, s)}`,
+    html`${flashBox(flash)}${statusSection(d)}${invitesSection(d.invites)}${aliasesSection(d, s)}${eventsSection(d, s)}${keysSection(d, s)}${passkeysSection(d, s)}`,
     s,
   );
 }

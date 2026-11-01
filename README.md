@@ -6,6 +6,8 @@ A small always-on server that lets **Meta Muse** (outbound-only) receive things 
 - **Email:** receive-only SMTP for random, revocable addresses `@muse.example.com`. Every message becomes an event.
 - **Connectors:** named, allowlisted fetchers (`email.attachment` so far).
 - **Publish API:** your own scripts can push events to Muse.
+- **Invitations:** create an event in the web admin (picture, date, time, location), send guests its unguessable
+  `/events/<id>` link, and every RSVP becomes an `invite.rsvp` event. Guests get an "add to calendar" `.ics` file.
 
 Both sides authenticate with Ed25519 keys (mutual challenge-response, signed requests, signed events, signed helper
 bundle). There are no shared passwords anywhere. Details: [`docs/specs/02-proxy-server-design.md`](docs/specs/02-proxy-server-design.md).
@@ -14,7 +16,7 @@ bundle). There are no shared passwords anywhere. Details: [`docs/specs/02-proxy-
 
 ```
 src/protocol/    shared wire format, canonical JSON, Ed25519 helpers (used by every component)
-src/server/      server: HTTP/WebSocket API, SMTP ingest, event store, connectors, admin CLI, web admin (admin/)
+src/server/      server: HTTP/WebSocket API, SMTP ingest, event store, connectors, admin CLI, web admin (admin/), invitations (invites/)
 src/helper/      Muse Helper (bundled to dist/muse-helper.mjs, served signed by the server)
 src/publisher/   muse-publish tool for your own scripts
 bin/mp           admin command (addresses, events, pairing, status, logs, settings, deploy)

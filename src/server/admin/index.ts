@@ -34,6 +34,26 @@ import {
   touchPasskey,
   useEnrollCode,
 } from "./passkeys.ts";
+import multipart from "@fastify/multipart";
+import { inviteFormPage, inviteDetailPage } from "./invites.ts";
+import { inviteUrl } from "../invites/index.ts";
+import { isPast } from "../invites/calendar.ts";
+import {
+  createInvite,
+  deleteInvite,
+  getInvite,
+  imageType,
+  inviteSummary,
+  listInvites,
+  listRsvps,
+  MAX_IMAGE_BYTES,
+  readInviteInput,
+  setInviteClosed,
+  timeZones,
+  updateInvite,
+  validateInvite,
+  type InviteInput,
+} from "../invites/store.ts";
 import { dashboardPage, enrollPage, eventPage, loginPage, pairPage, type CursorView, type EventSummary, type Flash, type SessionView } from "./views.ts";
 
 const SESSION_COOKIE = "__Host-mp_admin";
@@ -43,7 +63,7 @@ const CSP = [
   "style-src 'self'",
   "script-src 'self'",
   "connect-src 'self'",
-  "img-src 'self'",
+  "img-src 'self' blob:",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",
@@ -113,6 +133,11 @@ const FLASHES: Record<string, Flash> = {
   bad_label: { kind: "err", text: "Labels are lowercase letters, digits and dashes (max 31 chars)." },
   bad_name: { kind: "err", text: "Names are lowercase letters, digits and dashes (max 41 chars)." },
   not_found: { kind: "err", text: "Nothing matched; it may already be revoked." },
+  invite_created: { kind: "ok", text: "Invitation created. Copy the link below and send it to your guests." },
+  invite_saved: { kind: "ok", text: "Changes saved." },
+  invite_closed: { kind: "ok", text: "RSVPs closed." },
+  invite_reopened: { kind: "ok", text: "RSVPs reopened." },
+  invite_deleted: { kind: "ok", text: "Invitation deleted." },
 };
 
 export async function registerAdmin(app: FastifyInstance, deps: AdminDeps): Promise<void> {
@@ -128,6 +153,20 @@ export async function registerAdmin(app: FastifyInstance, deps: AdminDeps): Prom
   await app.register(async (admin) => {
     admin.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string", bodyLimit: 16 * 1024 }, (_req, body, done) => {
       done(null, Object.fromEntries(new URLSearchParams(body as string)));
+    });
+
+    // Invitation forms upload a picture. Fields (including _csrf) land on req.body; the file as a Buffer.
+    await admin.register(multipart, {
+      attachFieldsToBody: "keyValues",
+      limits: { files: 1, fileSize: MAX_IMAGE_BYTES, fields: 20, fieldSize: 16 * 1024, parts: 25 },
+    });
+
+    admin.setErrorHandler((err: Error & { statusCode?: number; code?: string }, req, reply) => {
+      if (err.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.code(413).type("text/plain").send("That picture is too big (max 15 MB). Go back and choose a smaller one.");
+      }
+      if ((err.statusCode ?? 500) >= 500) console.error(`[admin] ${req.method} ${req.url}`, err);
+      return reply.send(err);
     });
 
     admin.addHook("onSend", async (_req, reply, payload) => {
@@ -178,6 +217,11 @@ export async function registerAdmin(app: FastifyInstance, deps: AdminDeps): Prom
     }
 
     const rateLimited = (reply: FastifyReply) => reply.code(429).send({ error: "Too many attempts. Try again later." });
+    // Runs before the multipart body is read, so uploads from signed-out browsers aren't buffered.
+    async function requireSignedIn(req: FastifyRequest, reply: FastifyReply) {
+      if (!currentSession(req)) return reply.code(403).type("text/plain").send("not signed in");
+    }
+
     const view = (req: FastifyRequest): SessionView => ({ email: config.admin.email, csrf: req.adminSession!.csrf, passkeyId: req.adminSession!.passkey_id });
     const page = (reply: FastifyReply, body: string) => reply.type("text/html; charset=utf-8").send(body);
     const field = (req: FastifyRequest, name: string) => String((req.body as Record<string, unknown> | undefined)?.[name] ?? "").trim();
@@ -330,6 +374,7 @@ export async function registerAdmin(app: FastifyInstance, deps: AdminDeps): Prom
             events: recent,
             eventCount,
             passkeys: listPasskeys(db),
+            invites: listInvites(db).map((i) => ({ ...i, past: isPast(i) })),
           },
           view(req),
           flash,
@@ -400,6 +445,82 @@ export async function registerAdmin(app: FastifyInstance, deps: AdminDeps): Prom
       // Removing the passkey this session signed in with also ended the session.
       if (passkey.id === req.adminSession!.passkey_id) return reply.header("set-cookie", sessionCookie("", 0)).redirect("/admin/login", 303);
       return reply.redirect("/admin?ok=removed_passkey#passkeys", 303);
+    });
+
+    // --- Invitations -----------------------------------------------------------
+
+    const emptyInvite = (): InviteInput => ({ title: "", description: "", location: "", date: "", start: "", end: "", timezone: config.timezone });
+    const inviteValues = (i: NonNullable<ReturnType<typeof getInvite>>): InviteInput => ({
+      title: i.title,
+      description: i.description,
+      location: i.location,
+      date: i.starts_local.slice(0, 10),
+      start: i.starts_local.slice(11, 16),
+      end: i.ends_local?.slice(11, 16) ?? "",
+      timezone: i.timezone,
+    });
+    /** Form values plus the uploaded picture (if any), with errors for both. */
+    function readInviteForm(req: FastifyRequest) {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const values = readInviteInput(body);
+      const errors = validateInvite(values);
+      const image = Buffer.isBuffer(body.image) && body.image.length > 0 ? body.image : undefined;
+      if (image && !imageType(image)) errors.image = "That file isn't a JPEG, PNG, WebP or GIF picture.";
+      return { values, errors, image, removeImage: body.remove_image === "1" };
+    }
+    const upload = { onRequest: requireSignedIn, preHandler: requireSession };
+
+    admin.get("/admin/invites/new", { preHandler: requireSession }, async (req, reply) =>
+      page(reply, inviteFormPage({ values: emptyInvite(), errors: {}, timezones: timeZones(), isNew: true }, view(req))),
+    );
+
+    admin.post("/admin/invites", upload, async (req, reply) => {
+      const { values, errors, image } = readInviteForm(req);
+      if (Object.keys(errors).length) return page(reply.code(400), inviteFormPage({ values, errors, timezones: timeZones(), isNew: true }, view(req)));
+      const inv = createInvite(db, config.dataDir, values, image);
+      console.log(`[admin] created invitation ${inv.id}`);
+      return reply.redirect(`/admin/invites/${inv.id}?ok=invite_created`, 303);
+    });
+
+    admin.get<{ Params: { id: string }; Querystring: { ok?: string } }>("/admin/invites/:id", { preHandler: requireSession }, async (req, reply) => {
+      const inv = inviteSummary(db, req.params.id);
+      if (!inv) return reply.code(404).type("text/plain").send("no such invitation");
+      return page(
+        reply,
+        inviteDetailPage({ inv: { ...inv, past: isPast(inv) }, rsvps: listRsvps(db, inv.id), url: inviteUrl(config.domain, inv.id) }, view(req), FLASHES[req.query.ok ?? ""]),
+      );
+    });
+
+    admin.get<{ Params: { id: string } }>("/admin/invites/:id/edit", { preHandler: requireSession }, async (req, reply) => {
+      const inv = getInvite(db, req.params.id);
+      if (!inv) return reply.code(404).type("text/plain").send("no such invitation");
+      return page(reply, inviteFormPage({ inv, values: inviteValues(inv), errors: {}, timezones: timeZones(), isNew: false }, view(req)));
+    });
+
+    admin.post<{ Params: { id: string } }>("/admin/invites/:id", upload, async (req, reply) => {
+      const inv = getInvite(db, req.params.id);
+      if (!inv) return reply.code(404).type("text/plain").send("no such invitation");
+      const { values, errors, image, removeImage } = readInviteForm(req);
+      if (Object.keys(errors).length) return page(reply.code(400), inviteFormPage({ inv, values, errors, timezones: timeZones(), isNew: false }, view(req)));
+      updateInvite(db, config.dataDir, inv.id, values, { image, removeImage });
+      console.log(`[admin] updated invitation ${inv.id}`);
+      return reply.redirect(`/admin/invites/${inv.id}?ok=invite_saved`, 303);
+    });
+
+    admin.post<{ Params: { id: string; action: string } }>("/admin/invites/:id/:action", { preHandler: requireSession }, async (req, reply) => {
+      const { id, action } = req.params;
+      if (!getInvite(db, id)) return reply.code(404).type("text/plain").send("no such invitation");
+      if (action === "close" || action === "reopen") {
+        setInviteClosed(db, id, action === "close");
+        console.log(`[admin] ${action === "close" ? "closed" : "reopened"} RSVPs for invitation ${id}`);
+        return reply.redirect(`/admin/invites/${id}?ok=invite_${action === "close" ? "closed" : "reopened"}`, 303);
+      }
+      if (action === "delete") {
+        deleteInvite(db, config.dataDir, id);
+        console.log(`[admin] deleted invitation ${id}`);
+        return reply.redirect("/admin?ok=invite_deleted#invites", 303);
+      }
+      return reply.code(404).type("text/plain").send("unknown action");
     });
   });
 }

@@ -11,7 +11,10 @@ install -d -m 0700 -o 1000 -g 1000 "$DIR"
 docker exec muse-proxy-app muse-proxy backup "/var/lib/muse-proxy/backups/muse-proxy-$STAMP.sqlite"
 FILE="$DIR/muse-proxy-$STAMP.sqlite"
 cp /opt/muse-proxy/data/app/server.key "$DIR/server-$STAMP.key"
-tar -C "$DIR" -czf "$FILE.tgz" "$(basename "$FILE")" "server-$STAMP.key"
+# Invitation pictures live next to the database; include them if there are any.
+EXTRA=()
+[[ -d /opt/muse-proxy/data/app/invites ]] && EXTRA=(-C /opt/muse-proxy/data/app invites)
+tar -C "$DIR" -czf "$FILE.tgz" "$(basename "$FILE")" "server-$STAMP.key" "${EXTRA[@]}"
 rm -f "$FILE" "$DIR/server-$STAMP.key"
 if [[ -n "${BACKUP_AGE_RECIPIENT:-}" ]] && command -v age >/dev/null; then
   age -r "$BACKUP_AGE_RECIPIENT" -o "$FILE.tgz.age" "$FILE.tgz" && rm -f "$FILE.tgz"

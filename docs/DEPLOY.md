@@ -125,6 +125,23 @@ working if the domain changes. Re-enroll in that case. Sessions last 12 hours (`
 deletes the session on the server. Sign-ins, rejected attempts and admin actions are logged (`mp logs`, lines starting
 `[admin]`).
 
+## 10. Invitations and RSVPs (optional, needs the web admin)
+
+In the web admin, **Invitations → New invitation** takes a name, date, start/end time, time zone, location, details and a
+picture. Saving it gives you a link like `https://muse.example.com/events/k7m2q9xv4b8n3hcd`. The id is 80 random bits, so
+links can't be guessed or enumerated (lookups of unknown ids are also rate limited per IP). Send the link to your guests.
+
+Guests see the details and answer with their name, phone or email, yes/no, and the number of adults and kids. The
+thank-you page has **Add to calendar** (an `.ics` file for Apple Calendar, Outlook and others) and a Google Calendar link.
+Answering again with the same phone number or email updates the earlier answer instead of adding a new one.
+
+Every answer becomes an `invite.rsvp` event for Muse (trust `untrusted`, since guests typed it) with the guest's answer
+and the running totals. The invitation page in the admin lists all answers, shows totals, and can edit the event,
+close or reopen RSVPs, or delete the invitation. Pictures are stored under `MP_DATA_DIR/invites/` on the data volume.
+The nightly `deploy/backup.sh` includes them; `muse-proxy backup` on its own copies only the database.
+
+`MP_TIMEZONE` sets the time zone the form starts with (default `UTC`). The form picks your browser's time zone for new invitations.
+
 ## Operations
 
 | Task | Command |

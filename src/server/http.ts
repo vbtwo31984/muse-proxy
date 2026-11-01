@@ -12,6 +12,7 @@ import { verifySignedRequest } from "./auth.ts";
 import { RateLimiter } from "./ratelimit.ts";
 import { StreamHub } from "./stream.ts";
 import { registerAdmin } from "./admin/index.ts";
+import { registerInvites } from "./invites/index.ts";
 import { activePairingCodes, addKey, burnPairingCode, type KeyRecord } from "./store.ts";
 
 declare module "fastify" {
@@ -82,7 +83,7 @@ export async function buildApp(deps: AppDeps): Promise<{ app: FastifyInstance; h
       const body = typeof payload === "string" || Buffer.isBuffer(payload) ? payload : "";
       reply.header(HEADER_SERVER_SIGNATURE, signString(identity, responseString(reply.statusCode, body, req.mpNonce)));
     }
-    reply.header("cache-control", "no-store");
+    if (!reply.hasHeader("cache-control")) reply.header("cache-control", "no-store");
     return payload;
   });
 
@@ -201,6 +202,7 @@ export async function buildApp(deps: AppDeps): Promise<{ app: FastifyInstance; h
   });
 
   await registerAdmin(app, { config, db, identity, events, hub, version: deps.version });
+  await registerInvites(app, { config, db, events });
 
   return { app, hub };
 }

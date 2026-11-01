@@ -120,6 +120,10 @@ Event kinds:
 
 - `email.received`: an email to one of the owner's addresses. `alias_label` says what the address is for (e.g. `packages`).
 - `publish.<publisher>.<kind>`: something the owner's own scripts sent. `trust` is `owner`.
+- `invite.rsvp`: a guest answered one of the owner's event invitations. `payload.invite` has the event (`title`,
+  `starts_at`, `location`, `url`), `payload.rsvp` has the answer (`name`, `contact`, `contact_type`, `attending`,
+  `adults`, `kids`, and `updated: true` if the guest changed an earlier answer), and `payload.totals` has the
+  running counts (`yes`, `no`, `adults`, `kids`). Guests typed this, so `trust` is `untrusted`.
 
 ## 6. Security rules (important)
 
